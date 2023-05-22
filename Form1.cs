@@ -11,73 +11,55 @@ namespace ElGamalCryptor
         public Form1()
         {
             InitializeComponent();
+            GenerateKeys();
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
             richTextBox2.Clear();
-            p = GetRandomBigInteger(1000, 10000);
-            g = GetRandomBigInteger(700, (int)p);
-            x = GetRandomBigInteger(end: (int)p);
             var input = richTextBox1.Text;
-            y = BigInteger.ModPow(g, x, p);
-            textBox1.Text = $"({p},{g},{y})";
-            textBox2.Text = x.ToString();
-            if (input.Length > 0)
+            List<Tuple<BigInteger, BigInteger>> cipherText = new();
+            BigInteger k = GetRandomBigInteger(1, (int)p - 2);
+
+            foreach (char ch in input)
             {
-                char[] temp = input.ToCharArray();
-                for (int i = 0; i <= input.Length - 1; i++)
-                {
-                    int m = temp[i];
-                    if (m > 0)
-                    {
-                        var k = GetRandomBigInteger(1, (int)p - 1); // 1 < k < (p-1)
-                        var a = BigInteger.ModPow(g, k, p);
-                        var b = ModMultiply(BigInteger.ModPow(y, k, p), m, p);
-                        richTextBox2.Text += $"{a} {b};";
-                    }
-                }
+                BigInteger m = (BigInteger)ch;
+                BigInteger a = BigInteger.ModPow(g, k, p);
+                BigInteger b = (BigInteger.ModPow(y, k, p) * m) % p;
+                cipherText.Add(new Tuple<BigInteger, BigInteger>(a, b));
             }
+
+            richTextBox2.Text = string.Join(';', cipherText.Select(ch => $"{ch.Item1},{ch.Item2}"));
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
             richTextBox2.Clear();
             var input = richTextBox1.Text;
-            string[] strA = input.Split(';', StringSplitOptions.RemoveEmptyEntries);
-            if (strA.Length > 0)
+            List<Tuple<BigInteger, BigInteger>> cipherText = new();
+            foreach (var item in input.Split(';'))
             {
-                for (var i = 0; i < strA.Length; i++)
-                {
-                    var ai = BigInteger.Parse(strA[i].Split(' ')[0]);
-                    var bi = BigInteger.Parse(strA[i].Split(' ')[1]);
-                    if ((ai != 0) && (bi != 0))
-                    {
-                        var s = BigInteger.ModPow(ai, x, p);
-                        var sInverse = ModInverse(s, p);
-                        var m = BigInteger.Remainder(bi * sInverse, p);
-                        var symbol = Encoding.UTF8.GetString(m.ToByteArray());
-                        richTextBox2.Text += symbol;
-                    }
-                }
+                cipherText.Add(new (
+                    BigInteger.Parse(item.Split(',').First()),
+                    BigInteger.Parse(item.Split(',').Last())
+                    ));
+            }
+            foreach (var pair in cipherText)
+            {
+                BigInteger a = pair.Item1;
+                BigInteger b = pair.Item2;
+                BigInteger aInverse = ModInverse(BigInteger.ModPow(a, x, p), p);
+                BigInteger m = aInverse * b % p;
+                richTextBox2.Text += (char)(int)m;
             }
         }
 
-        private static BigInteger GetRandomBigInteger(int start = 0, int end = 100) =>
-            new(random.Next(start, end));
-
-        private static BigInteger ModMultiply(BigInteger a, BigInteger b, BigInteger n)
+        private static BigInteger GetRandomBigInteger(int start = 0, int end = 100)
         {
-            var sum = BigInteger.Zero;
-            for (var i = 0; i < b; i++)
-            {
-                sum += a;
-                if (sum >= n)
-                {
-                    sum -= n;
-                }
-            }
-            return sum;
+            byte[] bytes = new byte[end / 8];
+            random.NextBytes(bytes);
+            BigInteger result = new(bytes);
+            return BigInteger.Abs(result % (end - start)) + start;
         }
 
         public static BigInteger ModInverse(BigInteger a, BigInteger n)
@@ -97,21 +79,60 @@ namespace ElGamalCryptor
             return v;
         }
 
-        public static bool IsPrime(long number)
+        public void GenerateKeys()
         {
-            if (number == 0 || number == 1)
+            p = GenerateLargePrime();
+            g = GetRandomBigInteger(2, (int)p - 1);
+            x = GetRandomBigInteger(1, (int)p - 2);
+            y = BigInteger.ModPow(g, x, p);
+            textBox1.Text = $"({p},{g},{y})";
+            textBox2.Text = x.ToString();
+        }
+
+        private BigInteger GenerateLargePrime()
+        {
+            while (true)
             {
-                return false;
-            }
-            int counter = 0;
-            for (long i = 2; i < number; i++)
-            {
-                if (number % i == 0)
+                BigInteger primeCandidate = GetRandomBigInteger(32768, 65536);
+                if (IsPrime(primeCandidate, 10))
                 {
-                    counter++;
+                    return primeCandidate;
                 }
             }
-            return counter == 0;
+        }
+
+        private bool IsPrime(BigInteger n, int k)
+        {
+            if (n == 2 || n == 3)
+                return true;
+            if (n <= 1 || n % 2 == 0)
+                return false;
+
+            BigInteger r = 0;
+            BigInteger s = n - 1;
+            while (s % 2 == 0)
+            {
+                r++;
+                s /= 2;
+            }
+
+            for (int i = 0; i < k; i++)
+            {
+                BigInteger a = GetRandomBigInteger(2, (int)n - 2);
+                BigInteger x = BigInteger.ModPow(a, s, n);
+                if (x == 1 || x == n - 1)
+                    continue;
+
+                for (var j = 0; j < r - 1; j++)
+                {
+                    x = BigInteger.ModPow(x, 2, n);
+                    if (x == n - 1)
+                        break;
+                }
+                if (x != n - 1)
+                    return false;
+            }
+            return true;
         }
     }
 }
